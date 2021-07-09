@@ -18,13 +18,49 @@ function ConnectAzCloud {
     Set-AzContext -Tenant $RawCreds.tenantId | out-null;
 }
 
+function IsValidTemplate($path) {
+    Try {
+        Test-AzResourceGroupDeployment -ResourceGroupName $Env:resourceGroupName -TemplateFile $path -workspace $Env:workspaceName
+        return $true
+    }
+    Catch {
+        Write-Host "[Warning] The file $path is not valid: $_"
+        return $false
+    }
+}
+
 if ($Env:cloudEnv -ne 'AzureCloud') {
     Write-Output "Attempting Sign In to Azure Cloud"
     ConnectAzCloud
 }
 
 Write-Output "Starting Deployment for Files in path: $Env:directory"
-Get-ChildItem $Env:directory -Filter *.json |
-ForEach-Object {
-    New-AzResourceGroupDeployment -ResourceGroupName $Env:resourceGroupName -TemplateFile $_.FullName -logAnalyticsWorkspaceName $Env:workspaceName
+
+if (Test-Path -Path $Env:directory) {
+    $totalFiles = 0;
+    $totalFailed = 0;
+    Get-ChildItem -Path $Env:directory -Recurse -Filter *.json |
+    ForEach-Object {
+        $CurrentFile = $_.FullName
+        $totalFiles ++
+        $isValid = IsValidTemplate $CurrentFile
+        if (-not $isValid) {
+            $totalFailed++
+            return
+        }
+        Try {
+            New-AzResourceGroupDeployment -ResourceGroupName $Env:resourceGroupName -TemplateFile $CurrentFile -workspace $Env:workspaceName
+        }
+        Catch {        
+            $totalFailed++
+            Write-Output "[Warning] Failed to deploy $CurrentFile with error: $_"
+        }
+    }
+    if ($totalFiles -gt 0 -and $totalFailed -gt 0) {
+        $error = "$totalFailed of $totalFiles deployments failed."
+        Throw $error
+    }
+}
+else {
+    Write-Output "[Warning] $Env:directory not found. nothing to deploy"
 }
