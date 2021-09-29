@@ -87,10 +87,11 @@ function IsRetryable($deploymentName) {
 
 function IsValidContentType($path) {
     $template = Get-Content $path | Out-String | ConvertFrom-Json
-    $isAllowedResources = $template.resources | ForEach-Object { 
-        $resourceTypes.contains($_.type)
+    $isAllowedResources = $true
+    $template.resources | ForEach-Object { 
+        $isAllowedResources = $resourceTypes.contains($_.type) -and $isAllowedResources
     }
-    return -not ($isAllowedResources.Contains($false))
+    return $isAllowedResources
 }
 
 function AttemptDeployment($path, $deploymentName) {
